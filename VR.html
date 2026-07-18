@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Espacial - Menu Premium</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        body {
+            background-color: #05050a;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            color: white;
+            transition: background 0.8s ease;
+        }
+        #webcam {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+        #canvas {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 2;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+
+        /* --- BOTÃO INICIAL ESTILIZADO --- */
+        #main-trigger-btn {
+            position: absolute;
+            bottom: 12%;
+            left: 50%;
+            transform: translateX(-50%) scale(1);
+            padding: 14px 30px;
+            font-size: 14px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            color: #00ffcc;
+            background: rgba(10, 15, 25, 0.85);
+            border: 2px solid #00ffcc;
+            border-radius: 30px;
+            box-shadow: 0 0 20px rgba(0, 255, 200, 0.3);
+            z-index: 5;
+            cursor: pointer;
+        }
+
+        /* --- CONTÊINER VR COM PERSPECTIVA --- */
+        #vr-space-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 4;
+            pointer-events: none;
+            perspective: 1200px;
+        }
+
+        /* --- PAINEL VR FLUTUANTE --- */
+        #vr-panel {
+            position: absolute;
+            top: 25%;
+            left: 50%;
+            margin-left: -225px; 
+            width: 450px;
+            background: rgba(10, 16, 26, 0.92);
+            border: 2px solid rgba(0, 255, 200, 0.4);
+            border-radius: 20px;
+            padding: 22px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), inset 0 0 15px rgba(0, 255, 200, 0.05);
+            display: none;
+            flex-direction: column;
+            gap: 20px;
+            pointer-events: auto;
+            backdrop-filter: blur(10px);
+            will-change: transform;
+        }
+
+        .panel-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #00ffcc;
+            font-weight: 800;
+            opacity: 0.9;
+        }
+
+        /* Cenários */
+        .environments-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        .env-card {
+            height: 55px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        /* Aplicativos e Opções */
+        .apps-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        .app-item {
+            background: rgba(255, 0, 100, 0.15);
+            border: 1px solid rgba(255, 0, 100, 0.6);
+            border-radius: 10px;
+            padding: 12px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: bold;
+            color: #ffb3d1;
+            cursor: pointer;
+        }
+
+        /* --- CURSOR DE CARREGAMENTO HUD (CIRCULAR) --- */
+        #vr-timer-container {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 100;
+            transform: translate(-50%, -50%); /* Centraliza perfeitamente no dedo */
+        }
+
+        #vr-timer-container svg {
+            position: absolute;
+            transform: rotate(-90deg);
+            width: 50px;
+            height: 50px;
+        }
+
+        #vr-timer-container circle {
+            fill: none;
+            stroke-width: 4;
+            stroke-linecap: round;
+        }
+
+        #track-circle {
+            stroke: rgba(255, 255, 255, 0.2);
+        }
+
+        #progress-circle {
+            stroke: #00ffcc;
+            stroke-dasharray: 126; /* 2 * PI * r (r=20) */
+            stroke-dashoffset: 126;
+            transition: stroke-dashoffset 0.1s linear;
+        }
+
+        .vr-interactive {
+            transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), background 0.2s, border-color 0.2s;
+        }
+    </style>
+</head>
+<body>
+
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <div id="main-trigger-btn" class="vr-interactive" data-action="toggle-menu">MENU VR</div>
+
+    <div id="vr-timer-container">
+        <svg>
+            <circle id="track-circle" cx="25" cy="25" r="20"></circle>
+            <circle id="progress-circle" cx="25" cy="25" r="20"></circle>
+        </svg>
+    </div>
+
+    <div id="vr-space-container">
+        <div id="vr-panel">
+            <div class="panel-section">
+                <div class="section-title">Espaços Virtuais</div>
+                <div class="environments-grid">
+                    <div class="env-card vr-interactive" data-action="env" data-bg="linear-gradient(to bottom, #1a2a6c, #b21f1f, #fdbb2d)">Praia</div>
+                    <div class="env-card vr-interactive" data-action="env" data-bg="linear-gradient(to bottom, #0f2027, #203a43, #2c5364)">Cidade</div>
+                    <div class="env-card vr-interactive" data-action="env" data-bg="linear-gradient(to bottom, #000046, #1cb5e0)">Espaço</div>
+                    <div class="env-card vr-interactive" data-action="env" data-bg="linear-gradient(to bottom, #d3cbb8, #6d604c)">Deserto</div>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <div class="section-title">Aplicações</div>
+                <div class="apps-grid">
+                    <div class="app-item vr-interactive" data-action="app" data-url="https://www.wikipedia.org">Wikipedia</div>
+                    <div class="app-item vr-interactive" data-action="app" data-url="https://www.bing.com">Navegador</div>
+                    <div class="app-item vr-interactive" data-action="close-panel" style="background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); color: #fff;">Ocultar</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const vrTimerContainer = document.getElementById('vr-timer-container');
+        const progressCircle = document.getElementById('progress-circle');
+        const vrPanel = document.getElementById('vr-panel');
+        const mainBtn = document.getElementById('main-trigger-btn');
+
+        let hoverElement = null;
+        let hoverStartTime = null;
+        const TIME_TO_CLICK = 1500; // Reduzido ligeiramente para 1.5s para melhor dinâmica
+
+        // Variáveis do giroscópio com suavização (Lerp)
+        let initialAlpha = null;
+        let targetAlpha = 0, targetBeta = 0;
+        let currentAlpha = 0, currentBeta = 0;
+        const SMOOTH_FACTOR = 0.12; // Quanto menor, mais suave/pesado fica o menu
+
+        window.addEventListener('deviceorientation', (event) => {
+            if (event.alpha === null) return;
+            
+            if (initialAlpha === null) {
+                initialAlpha = event.alpha;
+            }
+
+            let diffAlpha = event.alpha - initialAlpha;
+            if (diffAlpha > 180) diffAlpha -= 360;
+            if (diffAlpha < -180) diffAlpha += 360;
+
+            targetAlpha = diffAlpha * 14; 
+            targetBeta = (event.beta - 70) * 14; 
+        });
+
+        // Loop de animação física para suavizar a rotação do painel
+        function updatePhysics() {
+            currentAlpha += (targetAlpha - currentAlpha) * SMOOTH_FACTOR;
+            currentBeta += (targetBeta - currentBeta) * SMOOTH_FACTOR;
+
+            if (vrPanel.style.display === 'flex') {
+                vrPanel.style.transform = `translate3d(${-currentAlpha}px, ${-currentBeta}px, 0px) rotateY(${-currentAlpha * 0.03}deg)`;
+            }
+            requestAnimationFrame(updatePhysics);
+        }
+        updatePhysics();
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults(onResults);
+
+        const camera = new Camera(video, {
+            onFrame: async () => { await hands.send({ image: video }); },
+            width: 640, height: 480, facingMode: 'environment'
+        });
+        camera.start();
+
+        function onResults(results) {
+            ctx.save();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Renderiza o vídeo de fundo primeiro
+            ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+
+                drawNeonHand(landmarks);
+
+                const indexTip = landmarks[8];
+                const fx = indexTip.x * canvas.width;
+                const fy = indexTip.y * canvas.height;
+
+                updateVrInteraction(fx, fy);
+            } else {
+                resetVrTimer();
+            }
+            ctx.restore();
+        }
+
+        function drawNeonHand(landmarks) {
+            ctx.strokeStyle = '#00ffcc';
+            ctx.lineWidth = 4;
+            ctx.shadowColor = '#00ffcc';
+            ctx.shadowBlur = 8;
+
+            const connections = [
+                [0,1], [1,2], [2,3], [3,4], [0,5], [5,6], [6,7], [7,8],
+                [9,10], [10,11], [11,12], [13,14], [14,15], [15,16],
+                [0,17], [17,18], [18,19], [19,20], [5,9], [9,13], [13,17]
+            ];
+
+            connections.forEach(([p1, p2]) => {
+                ctx.beginPath();
+                ctx.moveTo(landmarks[p1].x * canvas.width, landmarks[p1].y * canvas.height);
+                ctx.lineTo(landmarks[p2].x * canvas.width, landmarks[p2].y * canvas.height);
+                ctx.stroke();
+            });
+
+            ctx.shadowBlur = 0;
+            landmarks.forEach((pt) => {
+                ctx.beginPath();
+                ctx.arc(pt.x * canvas.width, pt.y * canvas.height, 5, 0, 2 * Math.PI);
+                ctx.fillStyle = '#ff0064';
+                ctx.fill();
+            });
+        }
+
+        function updateVrInteraction(x, y) {
+            const element = document.elementFromPoint(x, y);
+            const interactiveEl = element ? element.closest('.vr-interactive') : null;
+
+            if (interactiveEl && window.getComputedStyle(interactiveEl).display !== 'none') {
+                vrTimerContainer.style.display = 'flex';
+                vrTimerContainer.style.left = `${x}px`;
+                vrTimerContainer.style.top = `${y}px`;
+
+                if (hoverElement !== interactiveEl) {
+                    hoverElement = interactiveEl;
+                    hoverStartTime = Date.now();
+                    interactiveEl.style.transform = 'scale(1.06)';
+                    if(interactiveEl.classList.contains('env-card')) interactiveEl.style.background = 'rgba(0, 255, 200, 0.2)';
+                }
+
+                const elapsed = Date.now() - hoverStartTime;
+                
+                // Cálculo do progresso do círculo (de 126 até 0)
+                const progress = Math.min(elapsed / TIME_TO_CLICK, 1);
+                const offset = 126 - (progress * 126);
+                progressCircle.style.strokeDashoffset = offset;
+
+                if (elapsed >= TIME_TO_CLICK) {
+                    triggerVrClick(interactiveEl);
+                    resetVrTimer();
+                }
+            } else {
+                resetVrTimer();
+            }
+        }
+
+        function resetVrTimer() {
+            if (hoverElement) {
+                hoverElement.style.transform = '';
+                if(hoverElement.classList.contains('env-card')) hoverElement.style.background = '';
+            }
+            hoverElement = null;
+            hoverStartTime = null;
+            vrTimerContainer.style.display = 'none';
+            progressCircle.style.strokeDashoffset = 126;
+        }
+
+        function triggerVrClick(element) {
+            const action = element.getAttribute('data-action');
+            
+            if (action === 'toggle-menu') {
+                initialAlpha = null; 
+                vrPanel.style.display = 'flex';
+                mainBtn.style.display = 'none';
+            }
+            else if (action === 'close-panel') {
+                vrPanel.style.display = 'none';
+                mainBtn.style.display = 'block';
+            }
+            else if (action === 'env') {
+                const bgGradient = element.getAttribute('data-bg');
+                document.body.style.background = bgGradient;
+                canvas.style.opacity = "0.75"; 
+            }
+            else if (action === 'app') {
+                const url = element.getAttribute('data-url');
+                window.open(url, '_blank');
+            }
+        }
+    </script>
+</body>
+</html>
+
